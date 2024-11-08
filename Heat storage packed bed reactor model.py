@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-# Example with rapeseed oil as fluid and quartzite rocks as solids
 ## Reactor parameters
 L = 1.8  # Reactor length (m)
 D = 0.4  # Reactor diameter (m)
@@ -33,6 +32,18 @@ dz = L / (Nz - 1)  # Grid spacing
 z = np.linspace(0, L, Nz)  # Axial coordinate
 
 ## Temperature-dependent property functions
+
+# rho_f = 850  # Fluid density (kg/m^3)
+# Cp_f = 2400  # Fluid heat capacity (J/kg/K)
+# mu_f = 0.002 # Fluid dynamic viscosity (kg/m/s)
+# rho_s = 2500  # Solid density (kg/m^3)
+# Cp_s = 830  # Solid heat capacity (J/kg/K)
+# rho_w = 7800  # Wall density (kg/m^3)
+# Cp_w = 466  # Wall heat capacity (J/kg/K)
+# k_f = 0.15 # Fluid thermal conductivity (W/m/K)
+# k_s = 5.69 # Solid thermal conductivity (W/m/K)
+# k_w = 45 # Wall thermal conductivity (W/m/K)
+
 def rho_f(T):
     return 871.1 - 0.713*T
 
@@ -44,16 +55,7 @@ def k_f(T):
 
 def mu_f(T):
     return 72.159*T**(-2.096)
-# rho_f = 850  # Fluid density (kg/m^3)
-# Cp_f = 2400  # Fluid heat capacity (J/kg/K)
-# mu_f = 0.002 # Fluid dynamic viscosity (kg/m/s)
-# rho_s = 2500  # Solid density (kg/m^3)
-# Cp_s = 830  # Solid heat capacity (J/kg/K)
-# rho_w = 7800  # Wall density (kg/m^3)
-# Cp_w = 466  # Wall heat capacity (J/kg/K)
-# k_f = 0.15 # Fluid thermal conductivity (W/m/K)
-# k_s = 5.69 # Solid thermal conductivity (W/m/K)
-# k_w = 45 # Wall thermal conductivity (W/m/K)
+
 def rho_s(T):
     return 2500+0*T
 
@@ -72,7 +74,7 @@ def Cp_w(T):
 def k_w(T):
     return 45+0*T
 
-def schumann_model(t, y): 
+def reactor_model(t, y): 
     T_f = y[:Nz]
     T_s = y[Nz:2*Nz]
     T_w = y[2*Nz:]
@@ -126,6 +128,7 @@ def schumann_model(t, y):
     dTw_dt[-1] = (k_w_values[-1] * (T_w[-2] - T_w[-1]) / dz**2 + h_fw_values[-1] * a_w * (T_f[-1] - T_w[-1]) - h_wa_values[-1] * a_w * (T_w[-1] - T_a)) / (rho_w_values[-1] * Cp_w_values[-1])
     
     # # Energy balances through the bed
+    # scéhma upwind pour la dérivée facteur de u
     dTf_dt[1:-1] = -u_values[1:-1] * (T_f[1:-1] - T_f[:-2]) / dz + (k_eff_f[1:-1] * (T_f[2:] - 2*T_f[1:-1] + T_f[:-2]) / dz**2 - h_fs_values[1:-1] * a_fs * (T_f[1:-1] - T_s[1:-1]) - h_fw_values[1:-1] * a_w * (T_f[1:-1] - T_w[1:-1])) / (e * rho_f_values[1:-1] * Cp_f_values[1:-1])
     dTs_dt[1:-1] = (k_eff_s[1:-1] * (T_s[2:] - 2*T_s[1:-1] + T_s[:-2]) / dz**2 + h_fs_values[1:-1] * a_fs * (T_f[1:-1] - T_s[1:-1])) / ((1 - e) * rho_s_values[1:-1] * Cp_s_values[1:-1])
     dTw_dt[1:-1] = (k_w_values[1:-1] * (T_w[2:] - 2*T_w[1:-1] + T_w[:-2]) / dz**2 + h_fw_values[1:-1] * a_w * (T_f[1:-1] - T_w[1:-1]) - h_wa_values[1:-1] * a_w * (T_w[1:-1] - T_a)) / (rho_w_values[1:-1] * Cp_w_values[1:-1])
@@ -139,7 +142,7 @@ t_span = (0, 50000)
 t_eval = np.linspace(0, 50000, 2000)
 
 ## Solve ODE system
-solution = solve_ivp(schumann_model, t_span, y0, method='Radau', t_eval=t_eval)
+solution = solve_ivp(reactor_model, t_span, y0, method='RK45', t_eval=t_eval)
 
 ## Extract results
 T_f = solution.y[:Nz]
