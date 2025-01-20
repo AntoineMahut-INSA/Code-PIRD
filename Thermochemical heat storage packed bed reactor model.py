@@ -2,74 +2,91 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 ## Reactor parameters
-L = 1.8  # Reactor length (m)
-D = 0.4  # Reactor bed diameter (m)
+L = 0.2  # Reactor length (m)
+D = 0.72  # Reactor bed diameter (m)
 r = D / 2
 w_t = 0.2 # Wall thickness (m)
 D_ext = D + w_t # Reactor external diameter (m)
 r_ext = D_ext / 2
-e = 0.41  # Bed void fraction
-Ds = 0.04 # Particle diameter (m)
-Q_f_in = 0.0191 # Fluid flow rate (kg/s)
+e = 0.4  # Bed void fraction
+Dsi = 0.01 # Inert particle center diameter (m)
+c_t = 0.002 # Coating thickness (m)
+Ds = 0.014 # Particle diameter (m)
+Q_f = 0.03 # Fluid flow rate (kg/s)
+
+
+## Reaction parameters and constants
+R = 8.31 # ideal gas constant (J/K/mol)
+dH = 3800e3 # Synthesis reaction enthalpy (J/kgw)
+dH_m = 1.2e6
+Ea = 4e4 # Arrhenius activation energy
+# q constants
+k_vs = 0.032
+D_0 = 4e-7
+b_0 = 5e4
+a = 3.04
+q_n1 = 0.84
+q_n0 = -198
+q_cap1 = 0.074
+q_cap2 = -4.7e-5
+q_cap3 = -3.9e-3
+
+M_v = 0.018 # Water molar mass (kg/mol)
 
 ## Operating conditions
-T_in = 433  # Inlet temperature (K)
-T_f0 = 483  # Initial fluid temperature (K)
-T_s0 = 483  # Initial solid temperature (K)
+T_in = 294  # Inlet temperature (K)
+T_f0 = 295  # Initial fluid temperature (K)
+T_s0 = 296  # Initial solid temperature (K)
 T_w0 = T_f0  # Initial wall temperature (K)
 T_a = 293  # Ambient temperature (K)
+
+P_amb = 101325 # Ambient pressure (Pa)
+P_in = P_amb # Inlet pressure (Pa)
+phi_in = 0.5 # Inlet relative humidity
+P_ws = np.exp(23.1964-3816.44/(T_in - 46.13)) # Antoine equation for water saturation vapor pressure (Pa)
+x_in = 0.622*phi_in * P_ws / (P_amb - P_ws * phi_in) # Inlet absolute humidity (kgw/kg)
+x_0 = x_in # Initial absolute humidity (kgw/kg)
 
 a_air = 33.5e-6 # Air thermal diffusivity at 20°C (m²/s)
 nu_air = 15.1e-6 # Air kinematic viscosity at 20°C (m²/s)
 k_air = 25.9e-3 # Air thermal conductivity at 20°C (W/K)
 
 ## Calculated parameters
-A = np.pi * D**2 / 4  # Cross-sectional area (m^2)
+A = np.pi * r**2  # Cross-sectional area (m^2)
+V = A*L # Reactor volume (m^3)
+#s_V = e*V # Solids volume
+
 a_fs = 6 * (1 - e) / Ds  # Specific surface area for fluid-solid heat transfer (m^2/m^3)
 a_w_int = 2 * r / (2*w_t * r_ext - w_t**2) # Specific internal surface area for fluid-wall heat transfer (m^2/m^3)
 a_w_ext = 2 * r_ext / (2*w_t * r_ext - w_t**2)  # Specific external surface area for ambient-wall heat transfer (m^2/m^3)
+
 
 ## Discretization
 Nz = 100 # Number of axial grid points
 dz = L / (Nz - 1)  # Grid spacing
 z = np.linspace(0, L, Nz)  # Axial coordinate
 
-## Fixed valueds
-# rho_f = 850  # Fluid density (kg/m^3)
-# Cp_f = 2400  # Fluid heat capacity (J/kg/K)
-# mu_f = 0.002 # Fluid dynamic viscosity (kg/m/s)
-# rho_s = 2500  # Solid density (kg/m^3)
-# Cp_s = 830  # Solid heat capacity (J/kg/K)
-# rho_w = 7800  # Wall density (kg/m^3)
-# Cp_w = 466  # Wall heat capacity (J/kg/K)
-# k_f = 0.15 # Fluid thermal conductivity (W/m/K)
-# k_s = 5.69 # Solid thermal conductivity (W/m/K)
-# k_w = 45 # Wall thermal conductivity (W/m/K)
-
 ## Temperature-dependent property functions
+def rho_f(T,AH):
+    return P_in / (287*T) * (1+AH) / (1+1.61*AH) # Ideal gas law
 
-# rapeseed oil
-def rho_f(T):
-    return 928-0.669*T
-
-def Cp_f(T):
-    return 0.0026*(T-273)+1915
+def Cp_f(x):
+    return 1.82*x+1.005
 
 def k_f(T):
-    return 2e-7*T**2 + 1.714e-4*T + 0.1698
+    return 0.03+0*T
 
 def mu_f(T):
-    return 39.498*T**-1.764
-# alumina spheres in comment
-# Quartzite
+    return 4.564e-8*T+4.745e-6
+
 def rho_s(T):
-    return 2500 + 0*T#-9.84e-2 * T + 4020
+    return 1900+0*T
 
 def Cp_s(T):
-    return 830 + 0*T#5.47e-7 * T**3 - 1.97e-3 * T**2 + 2.45 * T + 191
+    return 780+0*T
 
 def k_s(T):
-    return 5.69 + 0*T #-2.47e-8 * T**3 - 9.51e-5 * T**2 - 0.124 * T + 61.8
+    return 0.26+0*T
 
 def rho_w(T):
     return 180+0*T
@@ -80,23 +97,27 @@ def Cp_w(T):
 def k_w(T):
     return 0.07+0*T
 
+def p_vs_values(T):
+    return np.exp(23.2-3816/(T-46.1))
+
+def phi_values(T,AH):
+    return AH * P_amb / ((0.622+AH)*p_vs_values(T)) # Assuming atmospheric pressure inside the reactor
+
 def reactor_model(t, y): 
     T_f = y[:Nz]
     T_s = y[Nz:2*Nz]
-    T_w = y[2*Nz:]
+    T_w = y[2*Nz:3*Nz]
+    x = y[3*Nz:4*Nz] # Absolute humidity (kg/kg)
+    q = y[4*Nz:] # Adsorbed layer density (kgw/m^3)
     
     dTf_dt = np.zeros(Nz)
     dTs_dt = np.zeros(Nz)
     dTw_dt = np.zeros(Nz)
-    
-    # if t <= 5000:
-    #    Q_f = Q_f_in  # Constant flow for first 1000 seconds
-    # else:
-    #    Q_f = 0  # No flow after 1000 seconds
-    Q_f = Q_f_in
+    dx_dt = np.zeros(Nz)
+    dq_dt = np.zeros(Nz)
     
     # Temperature-dependent properties
-    rho_f_values = rho_f(T_f)
+    rho_f_values = rho_f(T_f,x)
     Cp_f_values = Cp_f(T_f)
     k_f_values = k_f(T_f)
     mu_f_values = mu_f(T_f)
@@ -106,114 +127,94 @@ def reactor_model(t, y):
     rho_w_values = rho_w(T_w)
     Cp_w_values = Cp_w(T_w)
     k_w_values = k_w(T_w)
-    u_values = Q_f / (rho_f_values * e * A)
-    u_sup_values = e * u_values
-    Re_values = rho_f_values * u_sup_values * Ds / mu_f_values
+    
+    phi = phi_values(T_f,x)
+    
+    # Following equations mostly from : A review on experience feedback and numerical modeling of packed-bed thermal energy storage systems (Esence et al., 2016) => validées avec modèle sensible
+    u = Q_f / (rho_f_values * e * A)
+    u_sup = e * u
+    Re_values = rho_f_values * u_sup * Ds / mu_f_values
     Pr_values = mu_f_values * Cp_f_values / k_f_values
-    Ra_a_values = 9.81 / (T_a*nu_air*a_air) * (T_w-50-T_a) * L**3 #-50 term accounts for drop in temperature in the wall
+    Ra_a_values = 9.81 / (T_a*nu_air*a_air) * (T_w-T_a) * L**3
     Nu_a_values = 0.56*Ra_a_values**0.25 # Nusselt values for air around the cylinder
-    h_fs_values = k_f_values / Ds * (2 + 1.8 * Re_values**0.5 * Pr_values**(1/3)) # Correlation by Ranz (1952)
-    #h_fs_eff_values = 1 / (1/h_fs_values + Ds/(6*k_s_values)) # used when solids thermal gradient can't be negliged
-    h_fw_values = k_f_values / L * (0.2 * Pr_values**(1/3) * Re_values**0.8) # Correlation by Yagi and Wakao (1959) with 40 < Re < 2000
-    h_wa_values = k_air * Nu_a_values / L #k_air / L * 0.59 * (0.71 * 9.81 * (T_w - T_a) * L**3 / ((T_w + T_a) / 2 * nu_air**2))**0.25 # Nusselt number correlation with 10^4 < Ra < 10^9 ; Rayleigh number calculation with Pr = 0.71 for air at 25°C
-    #print(h_fs_values)
+    h_fs_values = k_f_values / Ds * (2 + 1.1 * Re_values**0.6 * Pr_values**(1/3)) # Correlation by Ranz (1952)
+    h_fw_values = k_f_values / L * (0.6 * Pr_values**(1/3) * Re_values**0.5) # Correlation by Yagi and Wakao (1959) with 1 < Re < 40
+    h_wa_values = k_air * Nu_a_values / L # Nusselt number correlation with 10^4 < Ra < 10^9 ; Rayleigh number calculation with Pr = 0.71 for air at 25°C
     beta = (k_s_values - k_f_values) / (k_s_values + 2 * k_f_values) # Parameter for fluid-solid thermal conductivity calculation
     k_eff_0 = k_f_values * (1 + 2 * beta * (1 - e) + (2 * beta**3 - 0.1 * beta) * (1 - e)**2 + (1 - e)**3 * 0.05 * np.exp(4.5 * beta)) / (1 - beta * (1 - e)) # Effective fluid-solid thermal conductivity of the bed due to conduction (Gonzo, 2002)
     f = (k_eff_0 - e * k_f_values - (1 - e) * k_s_values) / (k_f_values - k_s_values) # Tortuosity of the bed
-    k_eff_f = (e + f) * k_f_values # Effective fluid thermal conductivity
-    # Radiation must be added in for gaseous HTF
+    k_eff_f = (e + f + 0.5*Re_values*Pr_values) * k_f_values # Effective fluid thermal conductivity
     k_eff_s = (1 - e - f) * k_s_values # Effective solid thermal conductivity (W/m/K)
+    
+    k_m = 15*D_0 / 0.0002**2 * np.exp(-Ea / (R * T_f)) + k_vs * u_sup # LDF time constant, Gondre : Eq III.1
+    b = b_0 * np.exp(-dH_m * M_v / (R * T_f)) # Gondre : Eq III.2
+    q_n = q_n1 * T_in + q_n0 # Gondre : Eq III.4
+    q_cap = q_cap1 * T_in + q_cap2*T_in + q_cap3 # Gondre : Eq III.3
+    q_e = b * phi * q_n / (1 + b * phi) + a*phi + q_cap * phi / (1-phi)
     
     # Bi = h_fs_values * Ds / (6 * k_s_values) # Biot number, must be < 0.1 for solids thermal gradient to be negligible
   
-    ## Boundaries energy balances
+    ## Sorption
+    dq_dt = k_m * (q_e - q) # Gondre : Eq II.24 
+
+    ## Vapour mass conservation
+    dx_dt[0] = -1/e*(dq_dt[0] + u[0] *(x[1] - x_in)/(2*dz))
+    dx_dt[1:-1] = -1/e*(dq_dt[1:-1] + u[1:-1] *(x[2:] - x[:-2])/(2*dz))
+    dx_dt[-1] = -1/e*(dq_dt[-1])
+    
+    
+    # Bilans à vérifier avec ceux de Gondre    
+
+    ## Energy balances
+    ## Boundaries
     # Fluid phase
-    dTf_dt[0] = -u_values[0] * (T_f[0] - T_in) / dz + (k_eff_f[0] * (T_f[1] - T_f[0]) / dz**2 - h_fs_values[0] * a_fs * (T_f[0] - T_s[0]) - h_fw_values[0] * a_w_int * (T_f[0] - T_w[0])) / (e * rho_f_values[0] * Cp_f_values[0])
-    dTf_dt[-1] = -u_values[-1] * (T_f[-1] - T_f[-2]) / dz + (-h_fs_values[-1] * a_fs * (T_f[-1] - T_s[-1]) - h_fw_values[-1] * a_w_int * (T_f[-1] - T_w[-1])) / (e * rho_f_values[-1] * Cp_f_values[-1])
+    dTf_dt[0] = -u[0] * (T_f[1] - T_in) / (2*dz) + (k_eff_f[0] * (T_f[1] - 2*T_f[0] + T_in) / dz**2 - h_fs_values[0] * a_fs * (T_f[0] - T_s[0]) - h_fw_values[0] * a_w_int * (T_f[0] - T_w[0])) / (e * rho_f_values[0] * Cp_f_values[0])
+    dTf_dt[-1] = (k_eff_f[-1] * 2*(T_f[-1] - T_f[-2]) / dz**2 - h_fs_values[-1] * a_fs * (T_f[-1] - T_s[-1]) - h_fw_values[-1] * a_w_int * (T_f[-1] - T_w[-1])) / (e * rho_f_values[-1] * Cp_f_values[-1])
     
     # Solid phase
-    dTs_dt[0] = (k_eff_s[0] * (T_s[1] - T_s[0]) / dz**2 + h_fs_values[0] * a_fs * (T_f[0] - T_s[0])) / ((1 - e) * rho_s_values[0] * Cp_s_values[0])
-    dTs_dt[-1] = (k_eff_s[-1] * (T_s[-2] - T_s[-1]) / dz**2 + h_fs_values[-1] * a_fs * (T_f[-1] - T_s[-1])) / ((1 - e) * rho_s_values[-1] * Cp_s_values[-1])
+    dTs_dt[0] = (k_eff_s[0] * 2*(T_s[1] - T_s[0]) / dz**2 + h_fs_values[0] * a_fs * (T_f[0] - T_s[0]) + T_s[0]*dH * dq_dt[0]) / ((1 - e) * rho_s_values[0] * Cp_s_values[0])
+    dTs_dt[-1] = (k_eff_s[-1] * 2*(T_s[-1] - T_s[-2]) / dz**2 + h_fs_values[-1] * a_fs * (T_f[-1] - T_s[-1]) + T_s[-1]*dH * dq_dt[-1]) / ((1 - e) * rho_s_values[-1] * Cp_s_values[-1])
     
     # Wall
-    dTw_dt[0] = (k_w_values[0] * (T_w[1] - T_w[0]) / dz**2 + h_fw_values[0] * a_w_int * (T_f[0] - T_w[0]) - h_wa_values[0] * a_w_ext * (T_w[0] - T_a)) / (rho_w_values[0] * Cp_w_values[0])
-    dTw_dt[-1] = (k_w_values[-1] * (T_w[-2] - T_w[-1]) / dz**2 + h_fw_values[-1] * a_w_int * (T_f[-1] - T_w[-1]) - h_wa_values[-1] * a_w_ext * (T_w[-1] - T_a)) / (rho_w_values[-1] * Cp_w_values[-1])
+    dTw_dt[0] = (k_w_values[0] * 2*(T_w[1] - T_w[0]) / dz**2 + h_fw_values[0] * a_w_int * (T_f[0] - T_w[0]) - h_wa_values[0] * a_w_ext * (T_w[0] - T_a)) / (rho_w_values[0] * Cp_w_values[0])
+    dTw_dt[-1] = (k_w_values[-1] * 2*(T_w[-1] - T_w[-2]) / dz**2 + h_fw_values[-1] * a_w_int * (T_f[-1] - T_w[-1]) - h_wa_values[-1] * a_w_ext * (T_w[-1] - T_a)) / (rho_w_values[-1] * Cp_w_values[-1])
     
-    # # Energy balances through the bed
-    # schéma upwind pour la dérivée facteur de u
-    dTf_dt[1:-1] = -u_values[1:-1] * (T_f[1:-1] - T_f[:-2]) / dz + (k_eff_f[1:-1] * (T_f[2:] - 2*T_f[1:-1] + T_f[:-2]) / dz**2 - h_fs_values[1:-1] * a_fs * (T_f[1:-1] - T_s[1:-1]) - h_fw_values[1:-1] * a_w_int * (T_f[1:-1] - T_w[1:-1])) / (e * rho_f_values[1:-1] * Cp_f_values[1:-1])
-    dTs_dt[1:-1] = (k_eff_s[1:-1] * (T_s[2:] - 2*T_s[1:-1] + T_s[:-2]) / dz**2 + h_fs_values[1:-1] * a_fs * (T_f[1:-1] - T_s[1:-1])) / ((1 - e) * rho_s_values[1:-1] * Cp_s_values[1:-1])
+    ## Through the bed
+    dTf_dt[1:-1] = -u[1:-1] * (T_f[2:] - T_f[:-2]) / (2*dz) + (k_eff_f[1:-1] * (T_f[2:] - 2*T_f[1:-1] + T_f[:-2]) / dz**2 - h_fs_values[1:-1] * a_fs * (T_f[1:-1] - T_s[1:-1]) - h_fw_values[1:-1] * a_w_int * (T_f[1:-1] - T_w[1:-1])) / (e * rho_f_values[1:-1] * Cp_f_values[1:-1])
+    dTs_dt[1:-1] = (k_eff_s[1:-1] * (T_s[2:] - 2*T_s[1:-1] + T_s[:-2]) / dz**2 + h_fs_values[1:-1] * a_fs * (T_f[1:-1] - T_s[1:-1]) + T_s[1:-1]*dH * dq_dt[1:-1]) / ((1 - e) * rho_s_values[1:-1] * Cp_s_values[1:-1])
     dTw_dt[1:-1] = (k_w_values[1:-1] * (T_w[2:] - 2*T_w[1:-1] + T_w[:-2]) / dz**2 + h_fw_values[1:-1] * a_w_int * (T_f[1:-1] - T_w[1:-1]) - h_wa_values[1:-1] * a_w_ext * (T_w[1:-1] - T_a)) / (rho_w_values[1:-1] * Cp_w_values[1:-1])
-    return np.concatenate((dTf_dt, dTs_dt, dTw_dt))
+
+    return np.concatenate((dTf_dt, dTs_dt, dTw_dt, dx_dt, dq_dt))
 
 ## Initial conditions
-y0 = np.concatenate((np.ones(Nz) * T_f0, np.ones(Nz) * T_s0, np.ones(Nz) * T_w0))
+y0 = np.concatenate((np.ones(Nz) * T_f0, np.ones(Nz) * T_s0, np.ones(Nz) * T_w0, np.ones(Nz)*x_0, np.zeros(Nz)))
 
 ## Time span (start, stop, number of points)
-t_span = (0, 3.5*3600)
-t_eval = np.linspace(0,3.5*3600, 350)
+t_span = (0, 1000)
+t_eval = np.linspace(0,1000, 100)
 
 ## Solve ODE system
 solution = solve_ivp(reactor_model, t_span, y0, method='Radau', t_eval=t_eval)
 
 ## Extract results
-T_f = solution.y[:Nz]-273
-T_s = solution.y[Nz:2*Nz]-273
-T_w = solution.y[2*Nz:]-273
+T_f = solution.y[:Nz]
+T_s = solution.y[Nz:2*Nz]
+T_w = solution.y[2*Nz:3*Nz]
+x = solution.y[3*Nz:4*Nz]
+q = solution.y[4*Nz:]
 
 ## Plot results
-# =============================================================================
 ## Plot temperature function of axial position at different time steps
 plt.figure(figsize=(12, 8))
-plt.plot(z, T_f[:, 50],'b', label='0.5h')
-plt.plot(z, T_f[:, 100],'g', label='1h')
-plt.plot(z, T_f[:, 150],'r', label='1.5h')
-plt.plot(z, T_f[:, 200],'c',label='2h')
-plt.plot(z, T_f[:, 250],'m', label='2.5h')
-plt.plot(z, T_f[:, 300],'y', label='3h')
-plt.plot(z, T_f[:, -1],'k', label='3.5h')
-x_05 = [0.020757825370675442, 0.1808896210873147, 0.341021416803954, 0.5011532125205932, 0.8154859967051072, 0.9785831960461285, 1.138714991762768, 1.2988467874794072, 1.4589785831960462, 1.6191103789126853, 1.7792421746293248]
-T_05 = [161.18421052631578, 169.21052631578948, 177.76315789473685, 203.68421052631578, 206.97368421052633, 208.28947368421052, 208.0263157894737, 208.15789473684214, 208.42105263157896, 209.21052631578948, 209.60526315789474]
-x_1 = [0.0236842105263158, 0.18059210526315791, 0.5032894736842106, 0.8141447368421054, 0.9799342105263159, 1.1338815789473686, 1.2996710526315791, 1.456578947368421, 1.6164473684210525, 1.7792763157894738, 0.34342105263157907]
-T_1 = [160.82372322899505, 162.14168039538714, 170.70840197693576, 200.49423393739704, 205.8978583196046, 205.8978583196046, 206.29324546952225, 206.8204283360791, 207.87479406919275, 207.4794069192751, 161.4827018121911]
-x_15 = [0.026644736842105297, 0.1894736842105264, 0.34638157894736854, 0.5032894736842106, 0.8200657894736845, 0.9769736842105263, 1.1427631578947373, 1.2996710526315791, 1.4595394736842107, 1.619407894736842, 1.7792763157894738]
-T_15 = [160.42833607907744, 161.2191103789127, 160.82372322899505, 162.00988467874794, 175.5848434925865, 190.74135090609556, 198.3855024711697, 202.86655683690282, 204.57990115321252, 205.8978583196046, 205.8978583196046]
-x_2 = [0.0236842105263158, 0.1865131578947369, 0.34342105263157907, 0.5032894736842106, 0.8200657894736845, 0.9799342105263159, 1.1427631578947373, 1.2996710526315791, 1.4625000000000001, 1.619407894736842, 1.7733552631578948]
-T_2 = [160.0329489291598, 161.08731466227349, 160.42833607907744, 160.95551894563428, 164.77759472817132, 170.44481054365733, 176.37561779242174, 189.68698517298188, 196.54036243822077, 201.54859967051073, 203.65733113673807]
-x_25 = [0.0236842105263158, 0.1835526315789474, 0.34046052631578955, 0.5032894736842106, 0.8230263157894739, 0.9799342105263159, 1.136842105263158, 1.2996710526315791, 1.4536184210526315, 1.6223684210526315, 1.7792763157894738]
-T_25 = [159.63756177924216, 160.82372322899505, 160.0329489291598, 160.69192751235585, 162.00988467874794, 164.11861614497528, 165.4365733113674, 172.55354200988467, 178.8797364085667, 187.31466227347613, 195.35420098846788]
-x_3 = [0.0236842105263158, 0.1835526315789474, 0.34046052631578955, 0.5032894736842106, 0.8200657894736845, 0.9799342105263159, 1.1398026315789476, 1.2967105263157896, 1.4625000000000001, 1.619407894736842, 1.7733552631578948]
-T_3 = [159.63756177924216, 160.82372322899505, 160.0329489291598, 160.69192751235585, 161.08731466227349, 162.00988467874794, 162.27347611202634, 164.64579901153212, 167.54530477759474, 172.02635914332785, 178.8797364085667]
-x_35 = [0.0236842105263158, 0.1835526315789474, 0.34046052631578955, 0.5032894736842106, 0.8230263157894739, 0.9769736842105263, 1.136842105263158, 1.2967105263157896, 1.4536184210526315, 1.6164473684210525, 1.7733552631578948]
-T_35 = [159.63756177924216, 160.82372322899505, 160.0329489291598, 160.69192751235585, 160.56013179571664, 161.08731466227349, 160.95551894563428, 161.74629324546953, 162.93245469522242, 165.04118616144973, 167.80889621087314]
-plt.plot(x_05,T_05,'bo',label='exp 0.5h')
-plt.plot(x_1,T_1,'go',label='exp 1h')
-plt.plot(x_15,T_15,'ro',label='exp 1.5h')
-plt.plot(x_2,T_2,'co',label='exp 2h')
-plt.plot(x_25,T_25,'mo',label='exp 2.5h')
-plt.plot(x_3,T_3,'yo',label='exp 3h')
-plt.plot(x_35,T_35,'ko',label='exp 3.5h')
-#plt.plot(z, T_s[:, -1], label='Solid temperature')
-#plt.plot(z, T_w[:, -1], label='Wall temperature')
+for i in [0, 25, 50, 75, 99]:
+    plt.plot(z, T_s[:, i], label='')
+
+## Experimental data for validation
+
+
 plt.xlabel('Axial position (m)')
-plt.ylabel('Temperature (°C)')
-plt.title('Extended Schumann Model - Packed Bed Reactor with Wall Effects')
+plt.ylabel('Temperature K')
+plt.title('Packed Bed Reactor model')
 plt.legend()
 plt.grid(True)
 plt.show()
-# =============================================================================
-# Plot temperature evolution over time at different reactor positions
-# =============================================================================
-# positions = [0, Nz//4, Nz//2, 3*Nz//4, -1]  # Start, 1/4, 1/2, 3/4, End
-# plt.figure(figsize=(12, 8))
-# for pos in positions:
-#     plt.plot(solution.t, T_f[pos, :], label=f'Fluid at z={z[pos]:.2f}m')
-#     plt.plot(solution.t, T_s[pos, :], '--', label=f'Solid at z={z[pos]:.2f}m')
-# #   plt.plot(solution.t, T_w[pos, :], ':', label=f'Wall at z={z[pos]:.2f}m')
-# plt.xlabel('Time (s)')
-# plt.ylabel('Temperature (K)')
-# plt.title('Temperature Evolution Over Time at Different Reactor Positions')
-# plt.legend()
-# plt.grid(True)
-# plt.show()
-# =============================================================================
