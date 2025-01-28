@@ -132,8 +132,8 @@ def reactor_model(t, y):
     Cp_w_values = Cp_w(T_w)
     k_w_values = k_w(T_w)
     
-    #phi = phi_values(T_f, x)
-    phi = phi_values(T_f, x_in)
+    phi = phi_values(T_f, x)
+    #phi = phi_values(T_f, x_in)
     
     # Following equations mostly from : A review on experience feedback and numerical modeling of packed-bed thermal energy storage systems (Esence et al., 2016) => validées avec modèle sensible
     u = Q_f / (rho_f_values * e * A)
@@ -179,15 +179,15 @@ def reactor_model(t, y):
     ## Boundaries
     # Fluid phase
     dTf_dt[0] = -u[0] * (T_f[1] - T_in) / (2*dz) + (k_eff_f[0] * (T_f[1] - 2*T_f[0] + T_in) / dz**2 - h_fs_values[0] * a_fs * (T_f[0] - T_s[0]) - h_fw_values[0] * a_w_int * (T_f[0] - T_w[0])) / (e * rho_f_values[0] * Cp_f_values[0])
-    dTf_dt[-1] = (k_eff_f[-1] * 2*(T_f[-1] - T_f[-2]) / dz**2 - h_fs_values[-1] * a_fs * (T_f[-1] - T_s[-1]) - h_fw_values[-1] * a_w_int * (T_f[-1] - T_w[-1])) / (e * rho_f_values[-1] * Cp_f_values[-1])
+    dTf_dt[-1] = (k_eff_f[-1] * (T_f[-2] - T_f[-1]) / dz**2 - h_fs_values[-1] * a_fs * (T_f[-1] - T_s[-1]) - h_fw_values[-1] * a_w_int * (T_f[-1] - T_w[-1])) / (e * rho_f_values[-1] * Cp_f_values[-1])
     
     # Solid phase
-    dTs_dt[0] = (k_eff_s[0] * 2*(T_s[1] - T_s[0]) / dz**2 + h_fs_values[0] * a_fs * (T_f[0] - T_s[0]) + dH * dq_dt[0]) / ((1 - e) * rho_s_values[0] * Cp_s_values[0])
-    dTs_dt[-1] = (k_eff_s[-1] * 2*(T_s[-1] - T_s[-2]) / dz**2 + h_fs_values[-1] * a_fs * (T_f[-1] - T_s[-1]) + dH * dq_dt[-1]) / ((1 - e) * rho_s_values[-1] * Cp_s_values[-1])
+    dTs_dt[0] = (k_eff_s[0] * (T_s[1] - T_s[0]) / dz**2 + h_fs_values[0] * a_fs * (T_f[0] - T_s[0]) + dH * dq_dt[0]) / ((1 - e) * rho_s_values[0] * Cp_s_values[0])
+    dTs_dt[-1] = (k_eff_s[-1] * (T_s[-2] - T_s[-1]) / dz**2 + h_fs_values[-1] * a_fs * (T_f[-1] - T_s[-1]) + dH * dq_dt[-1]) / ((1 - e) * rho_s_values[-1] * Cp_s_values[-1])
     
     # Wall
-    dTw_dt[0] = (k_w_values[0] * 2*(T_w[1] - T_w[0]) / dz**2 + h_fw_values[0] * a_w_int * (T_f[0] - T_w[0]) - h_wa_values[0] * a_w_ext * (T_w[0] - T_a)) / (rho_w_values[0] * Cp_w_values[0])
-    dTw_dt[-1] = (k_w_values[-1] * 2*(T_w[-1] - T_w[-2]) / dz**2 + h_fw_values[-1] * a_w_int * (T_f[-1] - T_w[-1]) - h_wa_values[-1] * a_w_ext * (T_w[-1] - T_a)) / (rho_w_values[-1] * Cp_w_values[-1])
+    dTw_dt[0] = (k_w_values[0] * (T_w[1] - T_w[0]) / dz**2 + h_fw_values[0] * a_w_int * (T_f[0] - T_w[0]) - h_wa_values[0] * a_w_ext * (T_w[0] - T_a)) / (rho_w_values[0] * Cp_w_values[0])
+    dTw_dt[-1] = (k_w_values[-1] * (T_w[-2] - T_w[-1]) / dz**2 + h_fw_values[-1] * a_w_int * (T_f[-1] - T_w[-1]) - h_wa_values[-1] * a_w_ext * (T_w[-1] - T_a)) / (rho_w_values[-1] * Cp_w_values[-1])
     
     ## Through the bed
     dTf_dt[1:-1] = -u[1:-1] * (T_f[2:] - T_f[:-2]) / (2*dz) + (k_eff_f[1:-1] * (T_f[2:] - 2*T_f[1:-1] + T_f[:-2]) / dz**2 - h_fs_values[1:-1] * a_fs * (T_f[1:-1] - T_s[1:-1]) - h_fw_values[1:-1] * a_w_int * (T_f[1:-1] - T_w[1:-1])) / (e * rho_f_values[1:-1] * Cp_f_values[1:-1])
@@ -200,7 +200,7 @@ def reactor_model(t, y):
 y0 = np.concatenate((np.ones(Nz) * T_f0, np.ones(Nz) * T_s0, np.ones(Nz) * T_w0, np.ones(Nz)*x_0, np.zeros(Nz)))
 
 ## Time span (start, stop, number of points)
-t_max = 0.3
+t_max = 0.5
 t_span = (0, t_max)
 t_eval = np.linspace(0, t_max, 100)
 
@@ -219,10 +219,11 @@ q = solution.y[4*Nz:]
 fig, axes = plt.subplots(1, 3, figsize=(12, 4))  # 1 row, 3 columns
 
 for i in [0, 25, 50, 75, 99]:
-    axes[0].plot(z, T_s[:, i], label='i')
-    axes[0].plot(z, T_f[:, i], label='i')
-    axes[1].plot(z, x[:, i], label='i')
-    axes[2].plot(z, q[:, i], label='i')
+    axes[0].plot(z, T_s[:, i], label=f"solid, time {i * t_max / 100}")
+    axes[0].plot(z, T_f[:, i], label=f"fluid, time {i * t_max / 100}")
+    axes[0].plot(z, T_w[:, i], label=f"wall, time {i * t_max / 100}")
+    axes[1].plot(z, x[:, i], label=f"time {i * t_max / 100}")
+    axes[2].plot(z, q[:, i], label=f"time {i * t_max / 100}")
 
 axes[0].set_title("Temperatures inside the reactor")
 axes[0].set_xlabel("z [m]")
