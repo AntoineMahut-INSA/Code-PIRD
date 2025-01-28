@@ -200,7 +200,7 @@ def reactor_model(t, y):
 y0 = np.concatenate((np.ones(Nz) * T_f0, np.ones(Nz) * T_s0, np.ones(Nz) * T_w0, np.ones(Nz)*x_0, np.zeros(Nz)))
 
 ## Time span (start, stop, number of points)
-t_max = 0.2
+t_max = 0.3
 t_span = (0, t_max)
 t_eval = np.linspace(0, t_max, 100)
 
