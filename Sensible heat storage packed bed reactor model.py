@@ -103,7 +103,7 @@ def reactor_model(t, y):
     k_eff_s = (1 - e - f) * k_s_values # Effective solid thermal conductivity (W/m/K)
     
     Bi = h_fs_values * Ds / (3 * k_s_values) # Biot number, must be < 0.1 for solids thermal gradient to be negligible
-    print(Bi)
+    
     ## Boundaries energy balances
     # Fluid phase
     dTf_dt[0] = -u_values[0] * (T_f[1] - T_in) / (2*dz) + (k_eff_f[0] * (T_f[1] - 2*T_f[0] + T_in) / dz**2 - h_fs_values[0] * a_fs * (T_f[0] - T_s[0]) - h_fw_values[0] * a_w_int * (T_f[0] - T_w[0])) / (e * rho_f_values[0] * Cp_f_values[0])
