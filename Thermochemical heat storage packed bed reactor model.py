@@ -1,6 +1,9 @@
+# coding=utf-8
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
+
 ## Reactor parameters
 L = 0.2  # Reactor length (m)
 D = 0.72  # Reactor bed diameter (m)
@@ -18,6 +21,7 @@ Q_f = 0.06 # Fluid flow rate (kg/s)
 ## Reaction parameters and constants
 R = 8.31 # ideal gas constant (J/K/mol)
 dH = 3800e3 # Synthesis reaction enthalpy (J/kgw)
+#dH = 0. # test Synthesis reaction enthalpy (J/kgw)
 dH_m = 1.2e6
 Ea = 4e4 # Arrhenius activation energy
 # q constants
@@ -46,7 +50,7 @@ P_in = P_amb # Inlet pressure (Pa)
 phi_in = 0.7 # Inlet relative humidity
 P_ws = np.exp(23.1964-3816.44/(T_in - 46.13)) # Antoine equation for water saturation vapor pressure (Pa)
 x_in = 0.622*phi_in * P_ws / (P_amb - P_ws * phi_in) # Inlet absolute humidity (kgw/kg)
-x_0 = x_in # Initial absolute humidity (kgw/kg)
+x_0 = 0. * x_in # Initial absolute humidity (kgw/kg)
 
 a_air = 33.5e-6 # Air thermal diffusivity at 20°C (m²/s)
 nu_air = 15.1e-6 # Air kinematic viscosity at 20°C (m²/s)
@@ -62,7 +66,7 @@ a_w_ext = 2 * r_ext / (2*w_t * r_ext - w_t**2)  # Specific external surface area
 
 
 ## Discretization
-Nz = 100 # Number of axial grid points
+Nz = 100  # Number of axial grid points
 dz = L / (Nz - 1)  # Grid spacing
 z = np.linspace(0, L, Nz)  # Axial coordinate
 
@@ -128,7 +132,8 @@ def reactor_model(t, y):
     Cp_w_values = Cp_w(T_w)
     k_w_values = k_w(T_w)
     
-    phi = phi_values(T_f,x)
+    #phi = phi_values(T_f, x)
+    phi = phi_values(T_f, x_in)
     
     # Following equations mostly from : A review on experience feedback and numerical modeling of packed-bed thermal energy storage systems (Esence et al., 2016) => validées avec modèle sensible
     u = Q_f / (rho_f_values * e * A)
@@ -155,14 +160,19 @@ def reactor_model(t, y):
     #print(q_n)
     
     ## Sorption
-    dq_dt = 0*q # k_m * (q_e - q) # Gondre : Eq II.24 
+    #dq_dt = 0*q #  Test materiau sensible seulement
+    dq_dt = k_m * (q_e - q) # Gondre : Eq II.24
 
     ## Vapour mass conservation
-    dx_dt[0] = -1/e*(dq_dt[0] + u[0] *(x[1] - x_in)/(2*dz))
-    dx_dt[1:-1] = -1/e*(dq_dt[1:-1] + u[1:-1] *(x[2:] - x[:-2])/(2*dz))
-    dx_dt[-1] = -1/e*dq_dt[-1]
+    #dx_dt[0] = -1/e*(0.*dq_dt[0] + u[0] *(x[1] - x_in) / dz)
+    #dx_dt[1:-1] = -1/e*(0. * dq_dt[1:-1] + u[1:-1] * (x[1:-1] - x[0:-2]) / dz )
+    #dx_dt[-1] = -1/e * 0. * dq_dt[-1] / dz
+    ## Vapour mass conservation, only advection
+    dx_dt[0] = - u[0] * (x[1] - x_in) / dz
+    dx_dt[1:] = - u[1:] * (x[1:] - x[0:-1]) / dz  #upwind scheme
     #print(dx_dt)
-    
+    #dx_dt = 0 * x
+
     # Bilans à vérifier avec ceux de Gondre    
 
     ## Energy balances
@@ -190,8 +200,9 @@ def reactor_model(t, y):
 y0 = np.concatenate((np.ones(Nz) * T_f0, np.ones(Nz) * T_s0, np.ones(Nz) * T_w0, np.ones(Nz)*x_0, np.zeros(Nz)))
 
 ## Time span (start, stop, number of points)
-t_span = (0, 1000)
-t_eval = np.linspace(0,1000, 100)
+t_max = 0.2
+t_span = (0, t_max)
+t_eval = np.linspace(0, t_max, 100)
 
 ## Solve ODE system
 solution = solve_ivp(reactor_model, t_span, y0, method='Radau', t_eval=t_eval)
@@ -205,9 +216,33 @@ q = solution.y[4*Nz:]
 
 ## Plot results
 ## Plot temperature function of axial position at different time steps
-plt.figure(figsize=(12, 8))
+fig, axes = plt.subplots(1, 3, figsize=(12, 4))  # 1 row, 3 columns
+
 for i in [0, 25, 50, 75, 99]:
-    plt.plot(z, T_s[:, i], label='')
+    axes[0].plot(z, T_s[:, i], label='i')
+    axes[0].plot(z, T_f[:, i], label='i')
+    axes[1].plot(z, x[:, i], label='i')
+    axes[2].plot(z, q[:, i], label='i')
+
+axes[0].set_title("Temperatures inside the reactor")
+axes[0].set_xlabel("z [m]")
+axes[0].set_ylabel("Temp [K]")
+axes[0].legend()
+
+axes[1].set_title("Water content inside the reactor")
+axes[1].set_xlabel("z [m]")
+axes[1].set_ylabel("x [kgw/kg]")
+axes[1].legend()
+
+axes[2].set_title("Reaction inside the reactor")
+axes[2].set_xlabel("z [m]")
+axes[2].set_ylabel("q")
+axes[2].legend()
+plt.tight_layout()
+# Show the figure
+plt.show()
+
+
 ## Plot temperature function of time at outlet
 plt.figure(figsize=(12, 8))
 plt.plot(z, T_f[-1, :], label='')
