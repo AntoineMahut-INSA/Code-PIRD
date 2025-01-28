@@ -105,6 +105,11 @@ def p_vs_values(T):
     return np.exp(23.2-3816/(T-46.1))
 
 def phi_values(T,AH):
+    """
+    Returns humidity ratio W [1] as W= AH*Pin/((0.622 + AH)*P_vs)
+    :param T: fluid temperature. [K]
+    :param AH: absolute humidity. [kg of water vapor per kg of dry air]
+    """
     return AH * P_in / ((0.622+AH)*p_vs_values(T)) # Assuming constant pressure inside the reactor
 
 def reactor_model(t, y): 
@@ -168,9 +173,11 @@ def reactor_model(t, y):
     #dx_dt[1:-1] = -1/e*(0. * dq_dt[1:-1] + u[1:-1] * (x[1:-1] - x[0:-2]) / dz )
     #dx_dt[-1] = -1/e * 0. * dq_dt[-1] / dz
     ## Vapour mass conservation, only advection
-    dx_dt[0] = - u[0] * (x[1] - x_in) / dz
+    dx_dt[0] = - u[0] * (x[1] - x_in) / dz  #precribed at inlet
     dx_dt[1:] = - u[1:] * (x[1:] - x[0:-1]) / dz  #upwind scheme
-    #print(dx_dt)
+    ## Vapour mass conservation, water consumption
+    # there is e*rho_f*dz*1 kg of dry air in the cell.
+    dx_dt = dx_dt - dq_dt / (e*rho_f_values)
     #dx_dt = 0 * x
 
     # Bilans à vérifier avec ceux de Gondre    
@@ -200,7 +207,7 @@ def reactor_model(t, y):
 y0 = np.concatenate((np.ones(Nz) * T_f0, np.ones(Nz) * T_s0, np.ones(Nz) * T_w0, np.ones(Nz)*x_0, np.zeros(Nz)))
 
 ## Time span (start, stop, number of points)
-t_max = 0.5
+t_max = 60*60*3
 t_span = (0, t_max)
 t_eval = np.linspace(0, t_max, 100)
 
@@ -218,26 +225,42 @@ q = solution.y[4*Nz:]
 ## Plot temperature function of axial position at different time steps
 fig, axes = plt.subplots(1, 3, figsize=(12, 4))  # 1 row, 3 columns
 
-for i in [0, 25, 50, 75, 99]:
-    axes[0].plot(z, T_s[:, i], label=f"solid, time {i * t_max / 100}")
-    axes[0].plot(z, T_f[:, i], label=f"fluid, time {i * t_max / 100}")
-    axes[0].plot(z, T_w[:, i], label=f"wall, time {i * t_max / 100}")
-    axes[1].plot(z, x[:, i], label=f"time {i * t_max / 100}")
-    axes[2].plot(z, q[:, i], label=f"time {i * t_max / 100}")
+linestyles = {'_s': '-', '_f': '--'}  # Define different linestyles for solid and fluid
+colors = [
+    "#000000",  # Black
+    "#8A2BE2",  # Violet (~400 nm)
+    "#4B0082",  # Indigo (~445 nm)
+    "#0000FF",  # Blue (~475 nm)
+    "#00FFFF",  # Cyan (~500 nm)
+    "#00FF00",  # Green (~525 nm)
+    "#ADFF2F",  # Yellow-Green (~560 nm)
+    "#FFFF00",  # Yellow (~580 nm)
+    "#FFA500",  # Orange (~600 nm)
+    "#FF4500",  # Reddish-Orange (~625 nm)
+    "#FF0000",  # Red (~700 nm)
+]  # Define a set of colors for different `i`
+
+for idx, i in enumerate(np.linspace(0, 99, 11, dtype=int)):
+    color = colors[idx % len(colors)]  # Cycle through colors for each `i`
+    axes[0].plot(z, T_s[:, i], label=f"solid, time {i * t_max / 100}", color=color, linestyle=linestyles['_s'])
+    axes[0].plot(z, T_f[:, i], label=f"fluid, time {i * t_max / 100}", color=color, linestyle=linestyles['_f'])
+    #axes[0].plot(z, T_w[:, i], label=f"wall, time {i * t_max / 100}")
+    axes[1].plot(z, x[:, i], label=f"time {i * t_max / 100}", color=color)
+    axes[2].plot(z, q[:, i], label=f"time {i * t_max / 100}", color=color)
 
 axes[0].set_title("Temperatures inside the reactor")
 axes[0].set_xlabel("z [m]")
 axes[0].set_ylabel("Temp [K]")
 axes[0].legend()
 
-axes[1].set_title("Water content inside the reactor")
+axes[1].set_title("Abolute humidity inside the reactor")
 axes[1].set_xlabel("z [m]")
-axes[1].set_ylabel("x [kgw/kg]")
+axes[1].set_ylabel("x [kg_water/kg_dryair]")
 axes[1].legend()
 
 axes[2].set_title("Reaction inside the reactor")
 axes[2].set_xlabel("z [m]")
-axes[2].set_ylabel("q")
+axes[2].set_ylabel("q [wtf?]")
 axes[2].legend()
 plt.tight_layout()
 # Show the figure
@@ -250,9 +273,9 @@ plt.plot(z, T_f[-1, :], label='')
 ## Experimental data for validation
 
 
-plt.xlabel('Axial position (m)')
+plt.xlabel('Time [s]')
 plt.ylabel('Temperature K')
-plt.title('Packed Bed Reactor model')
+plt.title('Fluid temperature at outlet')
 plt.legend()
 plt.grid(True)
 plt.show()
