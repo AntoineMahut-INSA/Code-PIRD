@@ -9,7 +9,7 @@ L = 0.2  # Reactor length (m)
 D = 0.72  # Reactor bed diameter (m)
 r = D / 2
 w_t = 0.2 # Wall thickness (m)
-D_ext = D + w_t # Reactor external diameter (m)
+D_ext = D + 2*w_t # Reactor external diameter (m)
 r_ext = D_ext / 2
 e = 0.4  # Bed void fraction
 e_r = 0.321 # Particle reactive volume fraction = 0.321 for 1 cm inert diameter + 2 mm reactive coating
@@ -181,8 +181,8 @@ def reactor_model(t, y):
     dq_dt = k_m * (q_e - q) # Gondre : Eq II.24
 
     ## Vapour mass conservation
-    dp_dt[0] = p[0] / T_f[0] * dTf_dt[0] - u[0] * T_f[0] / e * (T_f[0]*(p[1]-p_in)-p[0]*(T_f[1]-T_in)) / (2*dz*T_f[0]**2)
-    dp_dt[1:-1] = p[1:-1] / T_f[1:-1] * dTf_dt[1:-1] - u[1:-1] * T_f[1:-1] / e * (T_f[1:-1]*(p[2:]-p[:-2])-p[1:-1]*(T_f[2:]-T_f[:-2])) / (2*dz*T_f[1:-1]**2)
+    dp_dt[0] = p[0] / T_f[0] * dTf_dt[0] - u[0] * T_f[0] / e * (T_f[0]*(p[0]-p_in)-p[0]*(T_f[0]-T_in)) / (dz*T_f[0]**2)
+    dp_dt[1:-1] = p[1:-1] / T_f[1:-1] * dTf_dt[1:-1] - u[1:-1] * T_f[1:-1] / e * (T_f[1:-1]*(p[1:-1]-p[:-2])-p[1:-1]*(T_f[1:-1]-T_f[:-2])) / (dz*T_f[1:-1]**2)
     dp_dt[-1] = 0
     dp_dt = dp_dt - Ba * R * T_f * dq_dt / (e*M_v)
 
@@ -215,7 +215,7 @@ def reactor_model(t, y):
 y0 = np.concatenate((np.ones(Nz) * T_f0, np.ones(Nz) * T_s0, np.ones(Nz) * T_w0, np.ones(Nz)*p_0, np.zeros(Nz)))
 
 ## Time span (start, stop, number of points)
-t_max = 3000
+t_max = 6*3600
 t_span = (0, t_max)
 t_eval = np.linspace(0, t_max, 100)
 
@@ -264,12 +264,12 @@ axes[0].legend(loc='upper left', bbox_to_anchor=(0,-0.2), ncol=5)
 axes[1].set_title("Vapor Pressure inside the reactor")
 axes[1].set_xlabel("z [m]")
 axes[1].set_ylabel("p [Pa]")
-axes[1].legend()
+#axes[1].legend()
 
 axes[2].set_title("Reaction inside the reactor")
 axes[2].set_xlabel("z [m]")
 axes[2].set_ylabel("q [kg/m^3]")
-axes[2].legend()
+#axes[2].legend()
 plt.subplots_adjust(wspace=0.3)
 #plt.tight_layout()
 # Show the figure
