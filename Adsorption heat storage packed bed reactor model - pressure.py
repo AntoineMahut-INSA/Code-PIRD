@@ -59,7 +59,11 @@ a_air = 33.5e-6 # Air thermal diffusivity at 20°C (m²/s)
 nu_air = 15.1e-6 # Air kinematic viscosity at 20°C (m²/s)
 k_air = 25.9e-3 # Air thermal conductivity at 20°C (W/K)
 
-## Calculated parameters
+## Calculated thermophysical parameters
+q_n = q_n1 * T_in_charge + q_n0  # Gondre : Eq III.4
+q_cap = q_cap1 * T_in_charge + q_cap2 * T_in + q_cap3  # Gondre : Eq III.3
+
+## Calculated geometric parameters
 A = np.pi * r**2  # Cross-sectional area (m^2)
 V = A*L # Reactor volume (m^3)
 
@@ -171,9 +175,8 @@ def reactor_model(t, y):
     k_eff_s = (1 - e - f) * k_s_values # Effective solid thermal conductivity (W/m/K)
     k_m = 15*D_0 / c_t**2 * np.exp(-Ea / (R * T_f)) + k_vs * u_sup # LDF time constant, Gondre : Eq III.1 ; between 1.4 and 4 for STAID
     b = b_0 * np.exp(-dH_m * M_v / (R * T_f)) # Gondre : Eq III.2
-    q_n = q_n1 * T_in_charge + q_n0 # Gondre : Eq III.4
-    q_cap = q_cap1 * T_in_charge + q_cap2*T_in + q_cap3 # Gondre : Eq III.3
-    q_e = b * phi * q_n / (1 + b * phi) + a*phi + q_cap * phi / (1-phi)
+
+    q_e = b * phi * q_n / (1 + b * phi) #+ a*phi + q_cap * phi / (1-phi)
 
     #Bi = h_fs_values * Ds / (6 * k_s_values) # Biot number, must be < 0.1 for solids thermal gradient to be negligible
     
@@ -217,7 +220,7 @@ def reactor_model(t, y):
 y0 = np.concatenate((np.ones(Nz) * T_f0, np.ones(Nz) * T_s0, np.ones(Nz) * T_w0, np.ones(Nz)*p_0, np.zeros(Nz)))
 
 ## Time span (start, stop, number of points)
-t_max = 60*60/3
+t_max = 60*60*3
 t_span = (0, t_max)
 t_eval = np.linspace(0, t_max, 100)
 
@@ -250,13 +253,19 @@ colors = [
     "#FF0000",  # Red (~700 nm)
 ]  # Define a set of colors for different `i`
 
-for idx, i in enumerate(np.linspace(0, 99, 11, dtype=int)):
+# compute equilibrium sorption
+b = b_0 * np.exp(-dH_m * M_v / (R * T_f))
+q_e = b * phi_values(T_f, p) * q_n / (1 + b * phi_values(T_f, p))  #+ a*phi_values(T_f, p) + q_cap * phi_values(T_f, p) / (1-phi_values(T_f, p))
+
+
+for idx, i in enumerate(np.linspace(0, 99, 31, dtype=int)):
     color = colors[idx % len(colors)]  # Cycle through colors for each `i`
     axes[0].plot(z, T_s[:, i], label=f"solid, time {i * t_max / 100}", color=color, linestyle=linestyles['_s'])
     axes[0].plot(z, T_f[:, i], label=f"fluid, time {i * t_max / 100}", color=color, linestyle=linestyles['_f'])
     #axes[0].plot(z, T_w[:, i], label=f"wall, time {i * t_max / 100}")
     axes[1].plot(z, p[:, i], label=f"time {i * t_max / 100}", color=color)
     axes[2].plot(z, q[:, i], label=f"time {i * t_max / 100}", color=color)
+    axes[2].plot(z, q_e[:, i], label=f"time {i * t_max / 100}", color=color, linestyle=linestyles['_f'])
 
 axes[0].set_title("Temperatures inside the reactor")
 axes[0].set_xlabel("z [m]")
@@ -273,7 +282,7 @@ axes[2].set_xlabel("z [m]")
 axes[2].set_ylabel("q [kg/m^3]")
 #axes[2].legend()
 plt.subplots_adjust(wspace=0.3)
-#plt.tight_layout()
+plt.tight_layout()
 # Show the figure
 plt.show()
 
