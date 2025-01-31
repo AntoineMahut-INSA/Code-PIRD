@@ -182,8 +182,10 @@ def reactor_model(t, y):
 
     ## Vapour mass conservation
     dp_dt[0] = p[0] / T_f[0] * dTf_dt[0] - u[0] * T_f[0] / e * (T_f[0]*(p[0]-p_in)-p[0]*(T_f[0]-T_in)) / (dz*T_f[0]**2)
-    dp_dt[1:-1] = p[1:-1] / T_f[1:-1] * dTf_dt[1:-1] - u[1:-1] * T_f[1:-1] / e * (T_f[1:-1]*(p[1:-1]-p[:-2])-p[1:-1]*(T_f[1:-1]-T_f[:-2])) / (dz*T_f[1:-1]**2)
-    dp_dt[-1] = 0
+    #dp_dt[1:-1] = p[1:-1] / T_f[1:-1] * dTf_dt[1:-1] - u[1:-1] * T_f[1:-1] / e * (T_f[1:-1]*(p[1:-1]-p[:-2])-p[1:-1]*(T_f[1:-1]-T_f[:-2])) / (dz*T_f[1:-1]**2)
+    #dp_dt[1:-1] = p[1:-1] / T_f[1:-1] * dTf_dt[1:-1] - u[1:-1] * T_f[1:-1] / (e * dz) * (p[1:-1] / T_f[1:-1] - p[0:-2] / T_f[0:-2])
+    dp_dt[1:] = p[1:] / T_f[1:] * dTf_dt[1:] - u[1:] * T_f[1:] / (e * dz) * (p[1:] / T_f[1:] - p[0:-1] / T_f[0:-1])
+    #dp_dt[-1] = 0
     dp_dt = dp_dt - Ba * R * T_f * dq_dt / (e*M_v)
 
 
@@ -215,7 +217,7 @@ def reactor_model(t, y):
 y0 = np.concatenate((np.ones(Nz) * T_f0, np.ones(Nz) * T_s0, np.ones(Nz) * T_w0, np.ones(Nz)*p_0, np.zeros(Nz)))
 
 ## Time span (start, stop, number of points)
-t_max = 6*3600
+t_max = 60*60/3
 t_span = (0, t_max)
 t_eval = np.linspace(0, t_max, 100)
 
